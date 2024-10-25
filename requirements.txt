@@ -1,0 +1,8 @@
+termcolor
+opencv-python-headless
+imagehash
+moviepy
+matplotlib
+faiss-cpu
+json_repair
+webvtt-py
