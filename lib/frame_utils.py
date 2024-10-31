@@ -32,6 +32,7 @@ def image_to_bytes(image):
     return buff.getvalue()
 
 def create_grid_image(frames,
+                      #max_ncol = 10,
                       max_ncol,
                       border_width = 2,
                       border_outline = (0, 0, 0),
@@ -136,6 +137,8 @@ def create_composite_images(frames,
         composite_images.append({
             'file': jpeg_file,
             'layout': image_layout,
+            'width': width,
+            'height': height
         })
 
     return composite_images
@@ -319,4 +322,75 @@ def search_box_in_grid_layouts(bbox, grid_layouts):
 
     return None
 
+def create_grid_image_from_files(image_files, max_ncol = 10, border_width = 2):
+    should_resize = len(image_files) > 50
 
+    with Image.open(image_files[0]) as image:
+        width, height = image.size
+
+    ncol = max_ncol
+    if len(image_files) < max_ncol:
+        ncol = len(image_files)
+
+    nrow = len(image_files) // ncol
+    if len(image_files) % ncol > 0:
+        nrow += 1
+    
+    # Create a new image to hold the grid
+    grid_width = width * ncol
+    grid_height = height * nrow
+    grid_image = Image.new("RGB", (grid_width, grid_height))
+
+    draw = ImageDraw.Draw(grid_image)
+    # Paste the individual images into the grid
+    for i, image_file in enumerate(image_files):
+        image = Image.open(image_file)
+        if should_resize:
+            image = image.resize((width, height))
+        x = (i % ncol) * width
+        y = (i // ncol) * height
+        grid_image.paste(image, (x, y))
+        # draw border
+        draw.rectangle((x, y, x + width, y + height), outline=(0, 0, 0), width=border_width)
+    
+    return grid_image
+    
+def skip_frames(frames, max_frames = 80):
+    if len(frames) < max_frames:
+        return frames
+
+    # miminum step = 2
+    skip_step = max(round(len(frames) / max_frames), 2)
+
+    output_frames = []
+    for i in range(0, len(frames), skip_step):
+        output_frames.append(frames[i])
+    
+    return output_frames
+
+def plot_shots(frames, num_shots):
+    mkdir('shots')
+
+    shots = [[] for _ in range(num_shots)]
+    for frame in frames.frames:
+        shot_id = frame['shot_id']
+        file = frame['image_file']
+        shots[shot_id].append(frame)
+
+    for i in range(len(shots)):
+        shot = shots[i]
+        num_frames = len(shot)
+        skipped_frames = skip_frames(shot)
+        skipped_frames = skip_frames(shot)
+        skipped_frames_files = [frame['image_file'] for frame in skipped_frames]
+        grid_image = create_grid_image_from_files(skipped_frames_files, 10)
+        #print(f'grid_image {json.dumps(grid_image)}')
+        w, h = grid_image.size
+        if h > 440:
+            grid_image = grid_image.resize((w // 2, h // 2))
+        w, h = grid_image.size
+        print(f"Shot #{i:04d}: {num_frames} frames ({len(skipped_frames)} drawn) [{w}x{h}]")
+        grid_image.save(f"shots/shot-{i:04d}.jpg")
+        display(grid_image)
+        grid_image.close()
+        print('====')

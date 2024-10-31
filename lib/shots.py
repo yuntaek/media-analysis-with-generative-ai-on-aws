@@ -7,7 +7,7 @@ import os
 from lib import util
 
 class Shots():
-    def __init__(self, videoframes, method="RekognitionShots", force=False):
+    def __init__(self, videoframes, method="RekognitionShots", min_similarity = 0.80, force=False):
         self.shots = []
         shots_file = os.path.join(videoframes.video_asset_dir(), 'shots.json')
 
@@ -28,7 +28,8 @@ class Shots():
             self.shots = self.group_frames_by_rekognition_shots(videoframes, self.rekognition_shots)
             util.save_to_file(shots_file, self.shots)
         elif method == "SimilarFrames":
-            raise NotImplementedError
+            self.shots = self.similar_frames_shot_detection(videoframes, min_similarity)
+            util.save_to_file(shots_file, self.shots)
         else:
             raise NameError
 
@@ -36,7 +37,52 @@ class Shots():
 
         return
 
-
+    def similar_frames_shot_detection(self, frames, min_similarity = 0.80):
+        shots = []
+        new_shots = []
+        current_shot = [frames.frames[0]]
+    
+        # group frames based on the similarity
+        for i in range(1, len(frames.frames)):
+            prev = current_shot[-1]
+            cur = frames.frames[i]
+            prev_embedding = prev['titan_multimodal_embedding']
+            cur_embedding = cur['titan_multimodal_embedding']
+    
+            similarity = frames.cosine_similarity(prev_embedding, cur_embedding)
+            cur['similarity'] = similarity
+    
+            if similarity > min_similarity:
+                current_shot.append(cur)
+            else:
+                shots.append(current_shot)
+                current_shot = [cur]
+    
+        if current_shot:
+            shots.append(current_shot)
+    
+        frames_in_shots = []
+        for i in range(len(shots)):
+            shot = shots[i]
+            frames_ids = [frame['id'] for frame in shot]
+            frames_in_shots.append({
+                'id': i,
+                'frame_ids': frames_ids
+            })
+            current_shot_frames = frames.frames[shot[0]['id']:shot[-1]['id']+1]
+            start_ms = shot[0]['timestamp_millis']
+            end_ms = shot[-1]['timestamp_millis']
+            duration = shot[-1]['timestamp_millis'] - shot[0]['timestamp_millis']
+            new_shot_object = Shot("SimilarFrames", i, frames, current_shot_frames, start_ms, end_ms, duration)
+            new_shots.append(new_shot_object.__dict__)
+    
+        # update shot_id in frame dict
+        for idx, frames_in_shot in enumerate(frames_in_shots):
+            for frame_id in frames_in_shot['frame_ids']:
+                frames.frames[frame_id]['shot_id'] = idx
+    
+        return new_shots
+        
     def rekognition_shot_detection(self, videoframes):
         """
         Starts a rekognition start_segment_detection API (https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/rekognition/client/start_segment_detection.html) to extract shots from the given video object. 

@@ -44,7 +44,7 @@ class Transcript():
         if os.path.exists(vtt_file) and os.path.exists(transcript_file):
             print(f"Transcript already exists for {video_file} use force=True to force regeneration... SKIPPING")
             
-            with open(os.path.join(self.video_asset_dir(), 'transcript.json')) as f:
+            with open(os.path.join(self.video_asset_dir(), 'transcript.json'), encoding="utf-8") as f:
                 transcript = json.load(f)
             return (transcript, vtt_file, transcript_file)
 

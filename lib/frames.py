@@ -16,6 +16,15 @@ from lib import util
 from lib.frame import Frame
 from lib import frame_utils
 import re
+import boto3
+from lib import image_utils
+import faiss
+from functools import cmp_to_key
+import numpy as np
+from numpy import dot
+from numpy.linalg import norm
+from IPython.display import display
+from IPython.display import Image as DisplayImage
 
 config = {
    "FRAME_PATH": "frames",
@@ -25,7 +34,9 @@ config = {
    "LAPLACIAN_DISTANCE": 0.2,
    "PHASH_THRESHOLD": 0.2,
    "PHASH_SIZE": 18,
-   "PHASH_DISTANCE": 4
+   "PHASH_DISTANCE": 4,
+   "TITAN_MODEL_ID": 'amazon.titan-embed-image-v1',
+   "TITAN_PRICING": 0.00006
 }
 
 # Must be h.264 video
@@ -41,6 +52,9 @@ class VideoFrames:
     self.end_ms = self.start_ms + self.duration_ms
     self.object = util.upload_object(bucket, self.video_stem(), video_file)
     self.extract_frames(force, max_res=max_res, sample_rate_fps=sample_rate_fps)  
+
+
+  def make_vector_store(self):
     dimension = len(self.frames[0]['titan_multimodal_embedding'])
     self.vector_store = self.create_index(dimension)
     self.calculate_similar_frames()
@@ -238,7 +252,7 @@ class VideoFrames:
         'image2',
         f"{shlex.quote(frame_dir)}/frames%07d.jpg"
     ]
-    
+    print(f" Extracting frames ...")
     print(f"  Resizing: {dw}x{dh} -> {w}x{h} (Progressive? {progressive})")
     print(f"  Command: {command}")
     
@@ -255,11 +269,11 @@ class VideoFrames:
         for line in result.stdout.splitlines():
             if "pts_time" in line:
                 timestamp = float(line.split("pts_time:")[1].split()[0])
-                newFrame = Frame(index, jpeg_frames[index], timestamp * 1000)
-                frameDict = newFrame.__dict__
-                self.frames.append(frameDict)
-                # FIXME
-                #self.frames.append(Frame(jpeg_frames[index], int(timestamp * 1000)))
+                newFrame = {}
+                newFrame['image_file'] = jpeg_frames[index]
+                newFrame['timestamp_millis'] = int(timestamp * 1000)
+                newFrame['id'] = index
+                self.frames.append(newFrame)
                 index+=1
     except subprocess.CalledProcessError as e:
         print(f"FFmpeg error: {e.stdout}")
@@ -267,7 +281,8 @@ class VideoFrames:
     util.save_to_file(frames_file, self.frames)
     
     t1 = time.time()
-    print(f"  extract_frames: elapsed {round(t1 - t0, 2)}s")
+    print(f"  Elapsed time: {round(t1 - t0, 2)}s")
+    print(f"  Frames extracted: {len(self.frames)}")
     
     return 
 
@@ -304,12 +319,35 @@ class VideoFrames:
         
         return composite_image_file
 
+  def create_composite_images(self, frames, folder):
+        folder = os.path.join(self.video_asset_dir(), folder)
+        os.makedirs(folder, exist_ok=True) 
+        composite_images = frame_utils.create_composite_images(
+                frames,
+                output_dir = folder,
+                prefix = 'shot_',
+                max_dimension = (1568, 1568),
+                burn_timecode = False
+                )
+        return composite_images
+      
+  def display_frames(self, start=0, end=0):
+         # Create a composite image that is a grid of the first 100 frames in the video displayed from left to right and top to bottom
+        frame_count = end-start
+        composite_file_name = \
+            os.path.basename(self.frames[start]["image_file"]).split(".")[0] \
+            + os.path.basename(self.frames[frame_count-1]["image_file"]).split(".")[0] \
+            + '.jpg'
+        composite_image_file = self.composite_image(start, frame_count, 10) # creates a grid of images from 0-100 in 10 columns
+        # Display the composite image 
+        display(DisplayImage(filename=composite_image_file))
+
   def calculate_similar_frames(self):
       
       frame_embeddings = [frame['titan_multimodal_embedding'] for frame in self.frames]
 
       for idx, frame in enumerate(self.frames):
-          similar_frames = self.search_similarity(self.vector_store, frame, idx)
+          similar_frames = self.search_similarity(idx)
           frame['similar_frames'] = similar_frames
       
     
@@ -329,15 +367,12 @@ class VideoFrames:
   def cosine_similarity(self, a, b):
         cos_sim = dot(a, b) / (norm(a) * norm(b))
         return cos_sim
-    
-  
 
-
-  def search_similarity(self, index, frame, idx, k = 20, min_similarity = 0.80, time_range = 30):
+  def search_similarity(self, idx, k = 20, min_similarity = 0.80, time_range = 30):
         
-        embedding = np.array([frame['titan_multimodal_embedding']])
+        embedding = np.array([self.frames[idx]['titan_multimodal_embedding']])
     
-        D, I = index.search(embedding, k)
+        D, I = self.vector_store.search(embedding, k)
     
         similar_frames = [
             {
@@ -385,7 +420,7 @@ class VideoFrames:
         """
         similar_frames = []
         for frame_id in range(start_frame_id, end_frame_id+1):
-            similar_frames_ids = [frame['idx'] for frame in self.frames[frame_id]['similar_frames']]
+            similar_frames_ids = [frame['idx'] for frame in self.search_similarity(frame_id)]
             similar_frames.extend(similar_frames_ids)
         # unique frames in shot
         return sorted(list(set(similar_frames)))
@@ -413,5 +448,50 @@ class VideoFrames:
         # unique frames in shot
         return sorted(list(set(related_shots)))
 
+  def make_titan_multimodal_embeddings(self):
+        """
+        Creates an image embedding for a frame. This function uses titan multimodal embedding model 
+        to create an embedding for the image frame.
+        
+        Args:
+           None
+        
+        """
 
+        titan_model_id = config['TITAN_MODEL_ID']
+        accept = 'application/json'
+        content_type = 'application/json'
+
+        bedrock_runtime_client = boto3.client(service_name='bedrock-runtime')
+
+        self.cost_embeddings = 0
+
+        for frame in self.frames:
+            with Image.open(frame['image_file']) as image:
+                input_image = image_utils.image_to_base64(image)
+    
+            model_params = {
+                'inputImage': input_image,
+                'embeddingConfig': {
+                    'outputEmbeddingLength': 384 #1024 #384 #256
+                }
+            }
+    
+            body = json.dumps(model_params)
+    
+            response = bedrock_runtime_client.invoke_model(
+                body=body,
+                modelId=titan_model_id,
+                accept=accept,
+                contentType=content_type
+            )
+            response_body = json.loads(response.get('body').read())
+    
+            frame['titan_multimodal_embedding'] = response_body['embedding']
+            frame['titan_multimodal_embedding_model_id'] = titan_model_id
+            self.cost_embeddings = self.cost_embeddings + 0.00006
+
+        return
+
+    
   
