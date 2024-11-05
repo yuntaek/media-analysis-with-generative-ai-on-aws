@@ -6,3 +6,4 @@ matplotlib
 faiss-cpu
 json_repair
 webvtt-py
+opensearch-py==2.4.2
