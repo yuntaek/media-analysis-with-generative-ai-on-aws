@@ -5,15 +5,16 @@ import time
 import os
 from functools import cmp_to_key
 from lib import util
+from lib import frame_utils
 
 class Scenes():
-    def __init__(self, frames, shots):
+    def __init__(self, frames, shots, min_similarity = 0.80, max_interval = 30):
         self.scenes = []
         self.detect_scenes(frames, shots)
         self.video_asset_dir = frames.video_asset_dir()
         
 
-    def detect_scenes(self, frames, shots):
+    def detect_scenes(self, frames, shots, min_similarity = 0.80, max_interval = 30):
         """
         Constructs scenes from the given frames and shots.
         This function finds the similar frames within each shot, then group the shots with similar frames
@@ -30,7 +31,7 @@ class Scenes():
         """
         # find similar shots by comparing to frames in other shots 
         for shot in shots:
-            shot['similar_frames'] = frames.collect_similar_frames(shot['start_frame_id'], shot['end_frame_id'])
+            shot['similar_frames'] = frames.collect_similar_frames(shot['start_frame_id'], shot['end_frame_id'], min_similarity, max_interval)
             shot['similar_shots'] = frames.collect_related_shots(shot['similar_frames'])
         
         # group shot into scenes using similar shot information
@@ -44,7 +45,7 @@ class Scenes():
             # update json files
             for shot_id in range(shot_min, shot_max + 1):
                 shots[shot_id]['scene_id'] = scene_id
-                for frame_id in range(shots[shot_id]['start_frame_id'], shots[shot_id]['start_frame_id']+1) :
+                for frame_id in range(shots[shot_id]['start_frame_id'], shots[shot_id]['end_frame_id']+1) :
                     frames.frames[frame_id]['scene_id'] = scene_id
 
             newScene = Scene(scene_id, frames, shots, shot_min, shot_max, shots[shot_min]['start_frame_id'], shots[shot_max]['end_frame_id'])
@@ -107,14 +108,41 @@ class Scenes():
             'shot_ids': stack[i],
         } for i in range(len(stack))]
     
-    
-    # ascending sort by the starting shot_id first and then descending sort by the ending shot_id
+
     def cmp_min_max(self, a, b):
         if a[0] < b[0]:
             return -1
         if a[0] > b[0]:
             return 1
         return b[1] - a[1]
+
+    def plot_scenes(self, frames):
+    
+        util.mkdir('plots')
+    
+        scenes = [[] for _ in range(len(self.scenes))]
+        for frame in frames.frames:
+            print(f"frame id {frame['id']} frame[scene_id] {frame['scene_id']}")
+            scene_id = frame['scene_id']
+            file = frame['image_file']
+            scenes[scene_id].append(file)
+    
+        for i in range(len(scenes)):
+            scene = scenes[i]
+            num_frames = len(scene)
+            skipped_frames = frame_utils.skip_frames(scene)
+            grid_image, layout = frame_utils.create_grid_image(skipped_frames, 10)
+            w, h = grid_image.size
+            if h > 440:
+                grid_image = grid_image.resize((w // 2, h // 2))
+            w, h = grid_image.size
+            print(f"Scene #{i:04d}: {num_frames} frames ({len(skipped_frames)} drawn) [{w}x{h}]")
+            grid_image.save(f"scenes/scene-{i:04d}.jpg")
+            display(grid_image)
+            grid_image.close()
+        print('====')
+
+    
 
 class Scene():
     def __init__(self, id, frames, shots, shot_min, shot_max, start_frame_id, end_frame_id):

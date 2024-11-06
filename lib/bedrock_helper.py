@@ -7,13 +7,17 @@ from PIL import Image, ImageDraw, ImageFont
 from lib import frames
 from lib import frame_utils
 
-MODEL_ID = 'anthropic.claude-3-haiku-20240307-v1:0'
-MODEL_VER = 'bedrock-2023-05-31'
-CLAUDE_PRICING = (0.00025, 0.00125)
+
 
 #MODEL_ID = 'anthropic.claude-3-haiku-20240307-v1:0'
 #CLAUDE_PRICING = (0.00025, 0.00125)
 #MODEL_VER = 'bedrock-2023-05-31'
+
+
+MODEL_ID = 'anthropic.claude-3-haiku-20240307-v1:0'
+MODEL_VER = 'bedrock-2023-05-31'
+CLAUDE_PRICING = (0.00025, 0.00125)
+
 MODEL_ID = 'anthropic.claude-3-sonnet-20240229-v1:0'
 CLAUDE_PRICING = (0.003, 0.015)
 MODEL_VER = 'bedrock-2023-05-31'
