@@ -28,13 +28,6 @@ from IPython.display import Image as DisplayImage
 
 config = {
    "FRAME_PATH": "frames",
-   "LAPLACIAN_PATH": "laplacian",
-   "LAPLACIAN_THRESHOLD": 0.2,
-   "LAPLACIAN_SIZE": 18,
-   "LAPLACIAN_DISTANCE": 0.2,
-   "PHASH_THRESHOLD": 0.2,
-   "PHASH_SIZE": 18,
-   "PHASH_DISTANCE": 4,
    "TITAN_MODEL_ID": 'amazon.titan-embed-image-v1',
    "TITAN_PRICING": 0.00006
 }
@@ -57,7 +50,7 @@ class VideoFrames:
   def make_vector_store(self):
     dimension = len(self.frames[0]['titan_multimodal_embedding'])
     self.vector_store = self.create_index(dimension)
-    self.calculate_similar_frames()
+    #self.calculate_similar_frames()
 
   def video_stem(self):
       return Path(self.video_file).stem
@@ -111,7 +104,6 @@ class VideoFrames:
         raise Exception('input video does not exist')
         
     util.mkdir(self.video_asset_dir())
-    util.mkdir(self.frame_dir())
 
     command_string = f'ffprobe -v quiet -print_format json -show_format -show_streams {shlex.quote(self.video_file)}'
     
@@ -155,8 +147,96 @@ class VideoFrames:
     util.save_to_file(stream_info_file, stream_info)
 
     return stream_info
-  
-  def extract_frames(self, force, max_res=(750, 500), sample_rate_fps=1):
+
+  def extract_frames(self, force, max_res = (750, 500), sample_rate_fps=1):
+ 
+    video = urlparse(self.video_file)
+    video_file = video.path
+    video_dir = Path(video_file).stem
+    frames_file = os.path.join(self.video_asset_dir(), 'frames.json')
+      
+    # input check: video is a file or https 
+    if video.scheme not in ['https', 'file', '']:
+        raise Exception('input video must be a local file path or use https')
+    
+    # input check: file scheme video exists
+    if video.scheme == 'file' and not os.path.exists(video_file):
+        raise Exception('input video does not exist')
+
+    # check to see if the frame info already exists
+    if os.path.exists(frames_file) and force == False:
+        with open(frames_file, 'r', encoding="utf-8") as f:
+            self.frames = json.loads(f.read())
+        print(f"  extract_frames: found {len(self.frames)} frames. SKIPPING... Use force=True to if you want to force running frame extraction.")
+        return
+    
+    frame_dir = os.path.join(video_dir, 'frames')
+    util.mkdir(frame_dir)
+
+    t0 = time.time()
+    video_filters = []
+    video_stream = self.stream_info['video_stream']
+
+    # need deinterlacing
+    progressive = video_stream['progressive']
+    if not progressive:
+        video_filters.append('yadif')
+
+    # downscale image
+    dw, dh = video_stream['display_resolution']
+    factor = max((max_res[0] / dw), (max_res[1] / dh))
+    w = round((dw * factor) / 2) * 2
+    h = round((dh * factor) / 2) * 2
+    video_filters.append(f"scale={w}x{h}")
+
+    # ffmpeg -ss 588 -i f"{self.video_file}" -vf "yadif,scale=iw*sar:ih" -frames:v 1 test2.jpg
+    
+    command = [
+        'ffmpeg',
+        '-v',
+        'quiet',
+        '-i',
+        shlex.quote(self.video_file),
+        # '-t',
+        # str(60),
+        '-vf',
+        f"{','.join(video_filters)}",
+        '-r',
+        str(1),
+        f"{shlex.quote(frame_dir)}/frames%07d.jpg"
+    ]
+
+    print(f"  Resizing: {dw}x{dh} -> {w}x{h} (Progressive? {progressive})")
+    print(f"  Command: {command}")
+    
+    # shlex.quote will place harmful input in quotes so it can't be executed by the shell
+    # nosemgrep Rule ID: dangerous-subprocess-use-audit
+    subprocess.run(
+        command,
+        shell=False,
+        stdout=subprocess.DEVNULL,
+        # stderr=subprocess.DEVNULL
+    )
+
+    t1 = time.time()
+    print(f"  extract_frames: elapsed {round(t1 - t0, 2)}s")
+
+    # return jpeg files
+    jpeg_frames = sorted(glob.glob(f"{frame_dir}/*.jpg"))
+
+    self.frames = []
+    index = 0
+    for jpeg_frame in jpeg_frames[2:]:
+        newFrame = {}
+        newFrame['image_file'] = jpeg_frame
+        newFrame['timestamp_millis'] = int(index * 1000)
+        newFrame['id'] = index
+        self.frames.append(newFrame)
+        index+=1
+                
+    return 
+
+  def fps_extract_frames(self, force, max_res=(750, 500), sample_rate_fps=1):
     """
     Extract individual frames from a video file as JPEG images.
 
@@ -331,23 +411,18 @@ class VideoFrames:
                 )
         return composite_images
       
-  def display_frames(self, start=0, end=0):
-         # Create a composite image that is a grid of the first 100 frames in the video displayed from left to right and top to bottom
-        frame_count = end-start
-        composite_file_name = \
-            os.path.basename(self.frames[start]["image_file"]).split(".")[0] \
-            + os.path.basename(self.frames[frame_count-1]["image_file"]).split(".")[0] \
-            + '.jpg'
-        composite_image_file = self.composite_image(start, frame_count, 10) # creates a grid of images from 0-100 in 10 columns
+  def display_frames(self, start=0, end=0, ncol=10):
+        
+        composite_image_file = self.composite_image(start, end, ncol) # creates a grid of images from 0-100 in 10 columns
         # Display the composite image 
         display(DisplayImage(filename=composite_image_file))
 
-  def calculate_similar_frames(self):
+  def calculate_similar_frames(self, min_similarity = 0.80, max_interval = 30):
       
       frame_embeddings = [frame['titan_multimodal_embedding'] for frame in self.frames]
 
       for idx, frame in enumerate(self.frames):
-          similar_frames = self.search_similarity(idx)
+          similar_frames = self.search_similarity(idx, min_similarity = min_similarity, time_range = max_interval)
           frame['similar_frames'] = similar_frames
       
     
@@ -407,10 +482,10 @@ class VideoFrames:
     
         return filtered_by_time_range
 
-  def collect_similar_frames(self, start_frame_id, end_frame_id):
+  def collect_similar_frames(self, start_frame_id, end_frame_id, min_similarity = 0.80, max_interval = 30):
         """
         Creates a sorted list of frames between the given frame IDs based on similarity.
-        The similar frames for each frame is precalculated in the Frames constructor.
+
         Args: 
            start_frame_id - the start of the frame index as a boundary
            end_frame_id - the end of the frame index as a boundary
@@ -420,7 +495,7 @@ class VideoFrames:
         """
         similar_frames = []
         for frame_id in range(start_frame_id, end_frame_id+1):
-            similar_frames_ids = [frame['idx'] for frame in self.search_similarity(frame_id)]
+            similar_frames_ids = [frame['idx'] for frame in self.search_similarity(frame_id, min_similarity = min_similarity, time_range = max_interval)]
             similar_frames.extend(similar_frames_ids)
         # unique frames in shot
         return sorted(list(set(similar_frames)))
