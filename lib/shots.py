@@ -150,7 +150,7 @@ class Shots():
                 # Find the start point of the scene
                 end_ms = technicalCue['EndTimestampMillis']
 
-                if frame['timestamp_millis'] >= start_ms and frame['timestamp_millis'] <= end_ms:
+                if frame['timestamp_millis'] >= start_ms and frame['timestamp_millis'] < end_ms:
                     current_shot_frames.append(frame)
 
             if current_shot_frames:
