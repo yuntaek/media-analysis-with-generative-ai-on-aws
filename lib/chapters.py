@@ -58,8 +58,8 @@ class Chapter:
         self.end_ms = scenes[-1]['end_ms']
         self.id = chapter_id
         self.text = text
-        self.composite_images = self.create_composite_images(frames.frames[self.start_frame_id:self.end_frame_id+1], frames.video_asset_dir())
-        
+        #self.composite_images = self.create_composite_images(frames.frames[self.start_frame_id:self.end_frame_id+1], frames.video_asset_dir())
+        self.composite_images = frames.create_composite_images(frames.frames[self.start_frame_id:self.end_frame_id+1], frames.video_asset_dir())
         return 
 
     def create_composite_images(self, frames, video_asset_dir):

@@ -399,13 +399,13 @@ class VideoFrames:
         
         return composite_image_file
 
-  def create_composite_images(self, frames, folder):
+  def create_composite_images(self, frames, folder, prefix='shot_'):
         folder = os.path.join(self.video_asset_dir(), folder)
         os.makedirs(folder, exist_ok=True) 
         composite_images = frame_utils.create_composite_images(
                 frames,
                 output_dir = folder,
-                prefix = 'shot_',
+                prefix=prefix,
                 max_dimension = (1568, 1568),
                 burn_timecode = False
                 )
