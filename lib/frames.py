@@ -44,7 +44,7 @@ class VideoFrames:
     self.duration_ms = self.stream_info['video_stream']['duration_ms']
     self.end_ms = self.start_ms + self.duration_ms
     self.object = util.upload_object(bucket, self.video_stem(), video_file)
-    self.extract_frames(force, max_res=max_res, sample_rate_fps=sample_rate_fps)  
+    self.fps_extract_frames(force, max_res=max_res, sample_rate_fps=sample_rate_fps)
 
 
   def make_vector_store(self):
@@ -291,6 +291,7 @@ class VideoFrames:
         raise Exception('input video does not exist')
     
     frame_dir = self.frame_dir()
+    util.mkdir(frame_dir)
     # Can't skip becasue we need the timestamps from the ffmpage command even if we have frames 
     #if len(self.frames) > 0 and force == False:
     #   print(f"  extract_frames: found frames. SKIPPING... Use the force=True option to regenerate frames")
@@ -300,8 +301,14 @@ class VideoFrames:
     video_stream = self.stream_info['video_stream']
     
     # This is a video filter option that sets the frame rate to the specified frames per second. 
-    # The fps filter adjusts the frame rate by duplicating or dropping frames as necessary. 
-    video_filters.append(f"fps={sample_rate_fps},showinfo")
+    #video_filters.append(f"fps={sample_rate_fps},showinfo")
+    #video_filters.append(f"select=\'if(eq(n,0),1,floor(t)-floor(prev_selected_t))\'")
+    #video_filters.append(f"select=\'bitor(gte(t-prev_selected_t,1.000),isnan(prev_selected_t))\'")
+    #video_filters.append(f"select=\'eq(n,0)+if(eq(n,0),0,floor(t)-floor(prev_selected_t))\'")
+    video_filters.append(f"select='if(eq(n,0),1,floor(t)-floor(prev_selected_t))\'")
+    
+    video_filters.append(f"showinfo")
+    
     
     # need deinterlacing
     progressive = video_stream['progressive']
@@ -314,20 +321,21 @@ class VideoFrames:
     w = round((dw * factor) / 2) * 2
     h = round((dh * factor) / 2) * 2
     video_filters.append(f"scale={w}x{h}")
-
+    '''
+    !ffmpeg -i Netflix_Open_Content_Meridian.mp4 -vf "select='if(eq(n,0),1,floor(t)-floor(prev_selected_t))',scale=392:220" -vsync 0 -qmin 1 -q:v 1 -f image2 ./Netflix_Open_Content_Meridian/frames/frames%07d.jpg
+    '''
     command = [
         'ffmpeg',
-        #'-v',
-        #'quiet',
         '-i',
         shlex.quote(self.video_file),
-        # DEBUG: Just get the first 60 seconds
-        #'-t',
-        #str(60),
         '-vf',
         f"{','.join(video_filters)}",
-        '-r',
-        str(sample_rate_fps),
+        '-vsync',
+        '0',
+        '-qmin',
+        '1',
+        '-q:v',
+        '1',
         '-f',
         'image2',
         f"{shlex.quote(frame_dir)}/frames%07d.jpg"
@@ -347,6 +355,7 @@ class VideoFrames:
         
         index = 0
         for line in result.stdout.splitlines():
+            #print(line)
             if "pts_time" in line:
                 timestamp = float(line.split("pts_time:")[1].split()[0])
                 newFrame = {}
