@@ -13,11 +13,6 @@ from lib import frame_utils
 #CLAUDE_PRICING = (0.00025, 0.00125)
 #MODEL_VER = 'bedrock-2023-05-31'
 
-
-MODEL_ID = 'anthropic.claude-3-haiku-20240307-v1:0'
-MODEL_VER = 'bedrock-2023-05-31'
-CLAUDE_PRICING = (0.00025, 0.00125)
-
 MODEL_ID = 'anthropic.claude-3-sonnet-20240229-v1:0'
 CLAUDE_PRICING = (0.003, 0.015)
 MODEL_VER = 'bedrock-2023-05-31'
@@ -47,7 +42,12 @@ def analyze_conversations(transcript_file):
     })
 
     ## system prompt to role play
-    system = 'You are a media operation assistant who analyses movie transcripts in WebVTT format and suggest chapter points based on the topic changes in the conversations. It is important to read the entire transcripts.'
+    system = '''
+    You are a media operation assistant who analyses movie transcripts 
+    in WebVTT format and suggest chapter points based on the topic 
+    changes in the conversations. It is important to read the entire 
+    transcripts.
+    '''
 
     ## setting up the model params
     model_params = {
@@ -77,8 +77,8 @@ def get_contextual_information(images, text, iab_definitions):
 
     messages = []
  
-    # adding sequences of composite images to the prompt
-    message_images = make_image_message(images)
+    # adding sequences of composite images to the prompt.  Limit is 20.
+    message_images = make_image_message(images[:19])
     messages.append(message_images)
 
     # adding the conversation to the prompt
