@@ -149,16 +149,16 @@ class VideoFrames:
     return stream_info
 
   def extract_frames(self, force, max_res = (750, 500), sample_rate_fps=1):
- 
+
     video = urlparse(self.video_file)
     video_file = video.path
     video_dir = Path(video_file).stem
     frames_file = os.path.join(self.video_asset_dir(), 'frames.json')
-      
+
     # input check: video is a file or https 
     if video.scheme not in ['https', 'file', '']:
         raise Exception('input video must be a local file path or use https')
-    
+
     # input check: file scheme video exists
     if video.scheme == 'file' and not os.path.exists(video_file):
         raise Exception('input video does not exist')
@@ -301,12 +301,7 @@ class VideoFrames:
     video_stream = self.stream_info['video_stream']
     
     # This is a video filter option that sets the frame rate to the specified frames per second. 
-    #video_filters.append(f"fps={sample_rate_fps},showinfo")
-    #video_filters.append(f"select=\'if(eq(n,0),1,floor(t)-floor(prev_selected_t))\'")
-    #video_filters.append(f"select=\'bitor(gte(t-prev_selected_t,1.000),isnan(prev_selected_t))\'")
-    #video_filters.append(f"select=\'eq(n,0)+if(eq(n,0),0,floor(t)-floor(prev_selected_t))\'")
-    video_filters.append(f"select='if(eq(n,0),1,floor(t)-floor(prev_selected_t))\'")
-    
+    video_filters.append(f"select='eq(n,0) + not(eq(n,0))*gte(t-prev_selected_t,{ 1/sample_rate_fps })'")
     video_filters.append(f"showinfo")
     
     
@@ -336,6 +331,7 @@ class VideoFrames:
         '1',
         '-q:v',
         '1',
+        
         '-f',
         'image2',
         f"{shlex.quote(frame_dir)}/frames%07d.jpg"
