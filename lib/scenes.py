@@ -10,7 +10,7 @@ from lib import frame_utils
 class Scenes():
     def __init__(self, frames, shots, min_similarity = 0.80, max_interval = 30):
         self.scenes = []
-        self.detect_scenes(frames, shots)
+        self.detect_scenes(frames, shots, min_similarity, max_interval)
         self.video_asset_dir = frames.video_asset_dir()
         
 
@@ -115,34 +115,6 @@ class Scenes():
         if a[0] > b[0]:
             return 1
         return b[1] - a[1]
-
-    def plot_scenes(self, frames):
-    
-        util.mkdir('plots')
-    
-        scenes = [[] for _ in range(len(self.scenes))]
-        for frame in frames.frames:
-            print(f"frame id {frame['id']} frame[scene_id] {frame['scene_id']}")
-            scene_id = frame['scene_id']
-            file = frame['image_file']
-            scenes[scene_id].append(file)
-    
-        for i in range(len(scenes)):
-            scene = scenes[i]
-            num_frames = len(scene)
-            skipped_frames = frame_utils.skip_frames(scene)
-            grid_image, layout = frame_utils.create_grid_image(skipped_frames, 10)
-            w, h = grid_image.size
-            if h > 440:
-                grid_image = grid_image.resize((w // 2, h // 2))
-            w, h = grid_image.size
-            print(f"Scene #{i:04d}: {num_frames} frames ({len(skipped_frames)} drawn) [{w}x{h}]")
-            grid_image.save(f"scenes/scene-{i:04d}.jpg")
-            display(grid_image)
-            grid_image.close()
-        print('====')
-
-    
 
 class Scene():
     def __init__(self, id, frames, shots, shot_min, shot_max, start_frame_id, end_frame_id):
