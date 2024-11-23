@@ -1,6 +1,6 @@
 # Video Understanding with Generative AI on AWS Workshop
 
-This hands-on workshop, aimed at developers and solution builders, introduces how to leverage AWS AI Services and foundation models (FMs) through [Amazon Bedrock](https://aws.amazon.com/bedrock/) to implement video understanding use cases. This code goes alongside the self-paced or instructor lead workshop here - https://catalog.us-east-1.prod.workshops.aws/ws-video-understanding-on-aws/en-US
+This hands-on workshop, aimed at developers and solution builders, introduces how to leverage AWS AI Services and foundation models (FMs) through [Amazon Bedrock](https://aws.amazon.com/bedrock/) to implement video understanding use cases. This code goes alongside the self-paced or instructor lead workshop here - [Video Understanding with Generative AI on AWS](https://catalog.us-east-1.prod.workshops.aws/workshops/7db2455e-0fa6-4f6d-9973-84daccd6421f)
 
 **Please follow the prerequisites listed in the link above or ask your AWS workshop instructor how to get started.**
 
