@@ -491,7 +491,7 @@ class VideoFrames:
         util.save_to_file(frames_file, self.frames)
 
         # save embeddings
-        util.save_to_file(fastpath_embeddings_file, self.frames)
+        #util.save_to_file(fastpath_embeddings_file, self.frames)
         self.store_fastpath_results("frames-embeddings.json")
         
         return
